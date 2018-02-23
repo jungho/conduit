@@ -54,7 +54,7 @@ use std::time::Duration;
 use tokio_core::reactor::{Core, Handle};
 use tower::NewService;
 use tower_fn::*;
-use conduit_proxy_router::{Recognize, Router};
+use conduit_proxy_router::{Recognize, Router, Error as RouteError};
 
 pub mod app;
 mod bind;
@@ -319,7 +319,22 @@ where
         let router = router.clone();
 
         // Map errors to 500 responses
-        MapErr::new(router)
+        MapErr::new(router, |e| {
+            match e {
+                RouteError::Route(r) => {
+                    error!("route error: {:?}", r);
+                    http::StatusCode::INTERNAL_SERVER_ERROR
+                }
+                RouteError::Inner(i) => {
+                    error!("inner error: {:?}", i);
+                    http::StatusCode::INTERNAL_SERVER_ERROR
+                }
+                RouteError::NotRecognized => {
+                    error!("route not recognized");
+                    http::StatusCode::NOT_FOUND
+                }
+            }
+        })
     }));
 
     let listen_addr = bound_port.local_addr();
